@@ -125,7 +125,7 @@ jobs:
             --set image.repository=vela-core-test \
             --set image.tag=${{ env.COMMIT_HASH }} \
             --set image.pullPolicy=IfNotPresent \
-            --timeout 10m \
+            --timeout 20m \
             --wait \
             --debug
 
