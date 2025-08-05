@@ -74,8 +74,6 @@ jobs:
           kubectl get pods -n vela-system
           kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
           kubectl get crd applications.core.oam.dev
-      - name: Check vela version
-        run: ./bin/vela version
       - name: Build and load Docker image
         run: |
           mkdir -p $HOME/tmp/
