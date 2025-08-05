@@ -1,3 +1,4 @@
+name: Upgrade E2E Test
 on:
   push:
     branches:
