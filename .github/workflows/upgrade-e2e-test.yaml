@@ -110,7 +110,6 @@ jobs:
           kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
           echo "Checking deployed image version..."
           kubectl get deployment kubevela-vela-core -n vela-system -o yaml | grep "image:" | head -1
-    # E2E Testing
       - name: Prepare for e2e tests
         run: |
               make e2e-cleanup
