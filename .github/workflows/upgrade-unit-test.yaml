@@ -90,7 +90,7 @@ jobs:
         run: |
           mkdir -p $HOME/tmp/
           # Build test image with coverage instrumentation for testing workflow
-          docker build -t vela-core-test:${{ env.COMMIT_HASH }} -f Dockerfile.e2e .
+          docker build -t vela-core-test:${{ env.COMMIT_HASH }} -f Dockerfile .
           # Load image into KinD cluster
           TMPDIR=$HOME/tmp/ kind load docker-image vela-core-test:${{ env.COMMIT_HASH }}
       - name: Upgrade KubeVela to local image
