@@ -112,5 +112,3 @@ jobs:
             echo "--- Logs for $pod ---"
             kubectl logs $pod -n vela-system || true
           done
-      - name: Retry Helm Upgrade with Debug Logs
-        if: false # Disabling this step as retry mechanism is removed
