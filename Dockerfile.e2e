@@ -28,6 +28,9 @@ RUN  apk add gcc musl-dev libc-dev ;\
     GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
     go test -c -o manager-${TARGETARCH}  -cover -covermode=atomic -coverpkg ./... .
 
+# Build the manager binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -a -o manager main.go
+
 # Use alpine as base image due to the discussion in issue #1448
 # You can replace distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
@@ -49,3 +52,9 @@ VOLUME ["/workspace/data"]
 ENTRYPOINT ["entrypoint.sh"]
 
 CMD ["manager"]
+
+# Use a minimal base image for the final stage
+FROM alpine:3.18
+WORKDIR /
+COPY --from=builder /workspace/manager .
+ENTRYPOINT ["/manager"]
