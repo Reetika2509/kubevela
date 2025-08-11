@@ -49,7 +49,7 @@ jobs:
         run: |
           go install sigs.k8s.io/kind@v0.24.0
           kind delete cluster || true
-          kind create cluster --image=kindest/node:${{ matrix.k8s-version }}
+          kind create cluster --image=kindest/node:${{ matrix.k8s-version }} --wait=60s
       - name: Get latest KubeVela release tag (no v prefix)
         id: get_latest_tag
         run: |
@@ -59,6 +59,12 @@ jobs:
           echo "LATEST_TAG=$TAG" >> $GITHUB_ENV
       - name: Get Ginkgo
         run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.14.0
+      - name: Build vela CLI
+        run: make vela-cli
+      - name: Build kubectl-vela plugin
+        run: make kubectl-vela
+      - name: Install kustomize
+        run: make kustomize
       - name: Add KubeVela Helm repo
         run: |
           helm repo add kubevela https://kubevela.github.io/charts
@@ -74,42 +80,35 @@ jobs:
           kubectl get pods -n vela-system
           kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
           kubectl get crd applications.core.oam.dev
-      - name: Build and load Docker image
-        run: |
-          mkdir -p $HOME/tmp/
-          TMPDIR=$HOME/tmp/ make image-load
+      - name: Check vela version
+        run: ./bin/vela version
       - name: Get commit hash
         id: commit_hash
         run: |
           echo "COMMIT_HASH=git-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-      - name: Upgrade KubeVela to local image
-        continue-on-error: true
+      - name: Build and load Docker image
         run: |
-          echo "Starting Helm upgrade for KubeVela..."
+          mkdir -p $HOME/tmp/
+          # Build test image with coverage instrumentation for testing workflow
+          docker build -t vela-core-test:${{ env.COMMIT_HASH }} -f Dockerfile.e2e .
+          # Load image into KinD cluster
+          TMPDIR=$HOME/tmp/ kind load docker-image vela-core-test:${{ env.COMMIT_HASH }}
+      - name: Upgrade KubeVela to local image
+        run: |
           helm upgrade kubevela ./charts/vela-core \
             --namespace vela-system \
             --set image.repository=vela-core-test \
             --set image.tag=${{ env.COMMIT_HASH }} \
             --set image.pullPolicy=IfNotPresent \
-            --timeout 10m \
+            --timeout 5m \
             --wait \
             --debug
-          echo "Helm upgrade completed. Fetching deployment status..."
-          kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
-          echo "Deployment status fetched successfully."
-      # - name: Post-upgrade status
-      #   run: |
-      #     ./bin/vela version
-      #     kubectl get pods -n vela-system
-      #     kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
-      - name: Debug Helm Installation
+      - name: Post-upgrade status
         run: |
-          echo "Fetching Kubernetes events for vela-system namespace..."
-          kubectl get events -n vela-system
-          echo "Describing all resources in vela-system namespace..."
-          kubectl describe all -n vela-system
-          echo "Fetching logs for pods in vela-system namespace..."
-          for pod in $(kubectl get pods -n vela-system -o jsonpath='{.items[*].metadata.name}'); do
-            echo "--- Logs for $pod ---"
-            kubectl logs $pod -n vela-system || true
-          done
+          echo "Verifying upgrade to local development image..."
+          kubectl get pods -n vela-system
+          kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
+          echo "Checking deployed image version..."
+          kubectl get deployment kubevela-vela-core -n vela-system -o yaml | grep "image:" | head -1
+      - name: Run unit tests
+        run: make test
