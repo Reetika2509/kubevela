@@ -112,22 +112,22 @@ jobs:
           kubectl get deployment kubevela-vela-core -n vela-system -o yaml | grep "image:" | head -1
       - name: Prepare for e2e tests
         run: |
-              make e2e-cleanup
-              make e2e-setup-core
-              helm test -n vela-system kubevela --timeout 5m
-          - name: Run api e2e tests
-            run: make e2e-api-test
-          - name: Run addon e2e tests
-            run: make e2e-addon-test
-          - name: Run e2e tests
-            run: make e2e-test
-          # Cleanup
-          - name: Stop kubevela and cleanup
-            run: make end-e2e
-          - name: Clean e2e profile
-            run: rm /tmp/e2e-profile.out
-          - name: Cleanup images
-            if: ${{ always() }}
-            run: |
-              make image-cleanup
-              docker image prune -f --filter "until=24h"
+          make e2e-cleanup
+          make e2e-setup-core
+          helm test -n vela-system kubevela --timeout 5m
+      - name: Run api e2e tests
+        run: make e2e-api-test
+      - name: Run addon e2e tests
+        run: make e2e-addon-test
+      - name: Run e2e tests
+        run: make e2e-test
+      # Cleanup
+      - name: Stop kubevela and cleanup
+        run: make end-e2e
+      - name: Clean e2e profile
+        run: rm /tmp/e2e-profile.out
+      - name: Cleanup images
+        if: ${{ always() }}
+        run: |
+          make image-cleanup
+          docker image prune -f --filter "until=24h"
