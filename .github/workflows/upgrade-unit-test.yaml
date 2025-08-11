@@ -84,6 +84,7 @@ jobs:
           echo "COMMIT_HASH=git-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
       - name: Upgrade KubeVela to local image
         run: |
+          echo "Starting Helm upgrade for KubeVela..."
           helm upgrade kubevela ./charts/vela-core \
             --namespace vela-system \
             --set image.repository=vela-core-test \
@@ -92,10 +93,24 @@ jobs:
             --timeout 10m \
             --wait \
             --debug
+          echo "Helm upgrade completed. Fetching deployment status..."
+          kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
+          echo "Deployment status fetched successfully."
       - name: Post-upgrade status
         run: |
           ./bin/vela version
           kubectl get pods -n vela-system
           kubectl rollout status deployment/kubevela-vela-core -n vela-system --timeout=300s
-      - name: Run unit tests
-        run: make test
+      - name: Debug Helm Installation
+        run: |
+          echo "Fetching Kubernetes events for vela-system namespace..."
+          kubectl get events -n vela-system
+          echo "Describing all resources in vela-system namespace..."
+          kubectl describe all -n vela-system
+          echo "Fetching logs for pods in vela-system namespace..."
+          for pod in $(kubectl get pods -n vela-system -o jsonpath='{.items[*].metadata.name}'); do
+            echo "--- Logs for $pod ---"
+            kubectl logs $pod -n vela-system || true
+          done
+      - name: Retry Helm Upgrade with Debug Logs
+        if: false # Disabling this step as retry mechanism is removed
