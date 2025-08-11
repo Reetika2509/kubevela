@@ -4,12 +4,10 @@ on:
     branches:
       - master
       - release-*
-      - fix/upgrade-test
   pull_request:
     branches:
       - master
       - release-*
-      - fix/upgrade-test
   workflow_dispatch: {}
 permissions:
   contents: read
