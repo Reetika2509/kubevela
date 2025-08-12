@@ -63,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false  # Continue testing other versions if one fails
       matrix:
-        k8s-version: ['v1.31.9']
+        k8s-version: ['v1.29.8']
 
     # ==========================================================================
     # Concurrency Control - Prevent overlapping runs
@@ -123,7 +123,7 @@ jobs:
       - name: Setup KinD with Kubernetes ${{ matrix.k8s-version }}
         run: |
           # Install KinD (Kubernetes in Docker)
-          go install sigs.k8s.io/kind@v0.29.0
+          go install sigs.k8s.io/kind@v0.24.0
           
           # Clean up any existing cluster and create new one
           kind delete cluster || true
