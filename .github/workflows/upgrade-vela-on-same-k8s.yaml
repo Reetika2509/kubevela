@@ -18,14 +18,12 @@ on:
     branches:
       - master
       - release-*
-      - fix/upgrade-test
 
   # Trigger on pull requests targeting main and release branches
   pull_request:
     branches:
       - master
       - release-*
-      - fix/upgrade-test
 
   # Allow manual workflow execution
   workflow_dispatch: {}
@@ -198,30 +196,97 @@ jobs:
             --wait \
             --debug
 
-      - name: Post-upgrade status (expecting failure)
+      - name: Post-upgrade status
         run: |
-          # Verify the upgrade failure as expected
-          echo "Verifying upgrade failure as expected..."
+          # Verify the status of the KubeVela deployment after the upgrade
+          echo "Verifying upgrade to local development image..."
+          kubectl get pods -n vela-system
+          kubectl rollout status deployment/kubevela-vela-core \
+            -n vela-system \
+            --timeout=300s
+          echo "Checking deployed image version..."
+          kubectl get deployment kubevela-vela-core \
+            -n vela-system \
+            -o yaml | grep "image:" | head -1
+
+      # ========================================================================
+      # E2E Test Environment Preparation
+      # ========================================================================
+      - name: Run Make
+        run: make
+
+      - name: Prepare for e2e tests
+        run: |
+          # Clean up previous test artifacts and setup core environment
+          echo "Preparing e2e test environment..."
+          make e2e-cleanup
+          make e2e-setup-core
           
-          # Check if the upgrade actually failed
-          if helm status kubevela -n vela-system | grep -q "STATUS: failed"; then
-            echo "✓ Upgrade failed as expected"
+          # Run Helm tests to verify installation
+          echo "Running Helm tests..."
+          helm test -n vela-system kubevela --timeout 5m
+
+      # ========================================================================
+      # E2E Test Execution - Multiple Test Suites
+      # ========================================================================
+
+      - name: Run api e2e tests
+        run: |
+          # Execute API-focused end-to-end tests
+          echo "Running API e2e tests..."
+          make e2e-api-test
+
+      - name: Run addon e2e tests
+        run: |
+          # Execute addon-focused end-to-end tests
+          echo "Running addon e2e tests..."
+          make e2e-addon-test
+
+      - name: Run e2e tests
+        run: |
+          # Execute general end-to-end tests
+          echo "Running general e2e tests..."
+          make e2e-test
+
+      # ========================================================================
+      # Cleanup
+      # ========================================================================
+
+      - name: Cleanup images
+        if: always()  # Always run cleanup, regardless of test outcome
+        run: |
+          # Clean up test artifacts and Docker images
+          echo "Cleaning up test images and artifacts..."
+          make image-cleanup || true
           
-            # Get failure details
-            echo "--- Upgrade Failure Details ---"
-            helm status kubevela -n vela-system
+          # Remove dangling images older than 24 hours
+          docker image prune -f --filter "until=24h" || true
           
-            # Check pod status to understand failure mode
-            echo "--- Pod Status During Failure ---"
-            kubectl get pods -n vela-system -o wide
+          echo "Cleanup completed"
+
+      # ========================================================================
+      # Failure Diagnostics
+      # ========================================================================
+
+      - name: Collect failure diagnostics
+        if: failure()  # Only run if previous steps failed
+        run: |
+          echo "=== FAILURE DIAGNOSTICS ==="
+          echo "Collecting diagnostic information for debugging..."
           
-            # Check for specific error conditions
-            echo "--- Checking for Expected Error Conditions ---"
-            kubectl describe pods -n vela-system -l app.kubernetes.io/name=vela-core | grep -A 10 "Events:"
+          echo "--- Cluster Status ---"
+          kubectl get nodes -o wide || true
+          kubectl get pods -A || true
           
-            echo "✓ Upgrade failure verified successfully"
-          else
-            echo "❌ Expected upgrade to fail, but it appears to have succeeded"
-            kubectl get deployment kubevela-vela-core -n vela-system -o yaml | grep "image:" | head -1
-            exit 1
-          fi
+          echo "--- KubeVela System Logs ---"
+          kubectl logs -n vela-system -l app.kubernetes.io/name=vela-core --tail=100 || true
+          
+          echo "--- Recent Events ---"
+          kubectl get events -A --sort-by='.lastTimestamp' --field-selector type!=Normal || true
+          
+          echo "--- Helm Release Status ---"
+          helm list -A || true
+          helm status kubevela -n vela-system || true
+          
+          echo "--- Test Artifacts ---"
+          find . -name "*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \; || true
