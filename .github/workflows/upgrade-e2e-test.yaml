@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        k8s-version: ['v1.31.9']
+        k8s-version: ['v1.29.8']
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.k8s-version }}
       cancel-in-progress: true
@@ -47,7 +47,7 @@ jobs:
         run: go get -v -t -d ./...
       - name: Setup KinD with Kubernetes ${{ matrix.k8s-version }}
         run: |
-          go install sigs.k8s.io/kind@v0.29.0
+          go install sigs.k8s.io/kind@v0.24.0
           kind delete cluster || true
           kind create cluster --image=kindest/node:${{ matrix.k8s-version }} --wait=60s
       - name: Get latest KubeVela release tag (no v prefix)
