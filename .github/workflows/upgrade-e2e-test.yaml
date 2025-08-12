@@ -122,10 +122,6 @@ jobs:
       - name: Run e2e tests
         run: make e2e-test
       # Cleanup
-      - name: Stop kubevela and cleanup
-        run: make end-e2e
-      - name: Clean e2e profile
-        run: rm /tmp/e2e-profile.out
       - name: Cleanup images
         if: ${{ always() }}
         run: |
