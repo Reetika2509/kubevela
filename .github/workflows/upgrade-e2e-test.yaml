@@ -131,6 +131,13 @@ jobs:
             --image=kindest/node:${{ matrix.k8s-version }} \
             --wait=300s
 
+      - name: Build vela CLI
+        run: make vela-cli
+      - name: Build kubectl-vela plugin
+        run: make kubectl-vela
+      - name: Install kustomize
+        run: make kustomize
+
       # ========================================================================
       # KubeVela Installation (Latest Release)
       # ========================================================================
