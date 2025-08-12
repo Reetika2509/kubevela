@@ -117,7 +117,7 @@ jobs:
       - name: Setup KinD clusters for multicluster testing
         run: |
           # Install KinD (Kubernetes in Docker)
-          go install sigs.k8s.io/kind@v0.24.0
+          go install sigs.k8s.io/kind@v0.29.0
           
           # Create worker cluster for multicluster setup
           echo "Creating worker cluster..."

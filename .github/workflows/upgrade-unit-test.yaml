@@ -18,14 +18,12 @@ on:
     branches:
       - master
       - release-*
-      - fix/upgrade-test
 
   # Trigger on pull requests targeting main and release branches
   pull_request:
     branches:
       - master
       - release-*
-      - fix/upgrade-test
 
   # Allow manual workflow execution
   workflow_dispatch: {}

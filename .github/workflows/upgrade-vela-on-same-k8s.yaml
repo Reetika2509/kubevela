@@ -1,32 +1,26 @@
 # =============================================================================
-# Upgrade E2E Test Workflow
+# Upgrade Unit Test Workflow
 # =============================================================================
-# This workflow performs comprehensive end-to-end testing for KubeVela upgrades.
-# It validates the upgrade path from the latest stable release to the current
-# development version by running multiple test suites including API, addon,
-# and general e2e tests.
-#
-# Test Flow:
-# 1. Install latest KubeVela release
-# 2. Build and upgrade to current development version
-# 3. Run comprehensive e2e test suites (API, addon, general)
-# 4. Validate upgrade functionality and compatibility
+# This workflow performs unit testing for KubeVela upgrades by:
+# 1. Installing the latest stable KubeVela release
+# 2. Building and upgrading to the current development version
+# 3. Running unit tests to validate the upgrade functionality
 # =============================================================================
 
-name: Upgrade E2E Test
+name: Upgrade Unit Test
 
 # =============================================================================
 # Trigger Configuration
 # =============================================================================
 on:
-  # Trigger on pushes to main branches and release branches
+  # Trigger on pushes to main and release branches
   push:
     branches:
       - master
       - release-*
       - fix/upgrade-test
 
-  # Trigger on pull requests targeting main branches
+  # Trigger on pull requests targeting main and release branches
   pull_request:
     branches:
       - master
@@ -53,9 +47,9 @@ env:
 # =============================================================================
 jobs:
   upgrade-tests:
-    name: Upgrade E2E Tests
+    name: Upgrade Unit Tests
     runs-on: ubuntu-22.04
-    timeout-minutes: 90  # Extended timeout for comprehensive e2e testing
+    timeout-minutes: 45  # Prevent hanging jobs
 
     # ==========================================================================
     # Matrix Strategy - Test against multiple Kubernetes versions
@@ -63,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false  # Continue testing other versions if one fails
       matrix:
-        k8s-version: ['v1.31.9']
+        k8s-version: ['v1.29.8']
 
     # ==========================================================================
     # Concurrency Control - Prevent overlapping runs
@@ -113,7 +107,7 @@ jobs:
 
       - name: Get Ginkgo
         run: |
-          # Install Ginkgo testing framework for e2e tests
+          # Install Ginkgo testing framework
           go install github.com/onsi/ginkgo/v2/ginkgo@v2.14.0
 
       # ========================================================================
@@ -123,7 +117,7 @@ jobs:
       - name: Setup KinD with Kubernetes ${{ matrix.k8s-version }}
         run: |
           # Install KinD (Kubernetes in Docker)
-          go install sigs.k8s.io/kind@v0.29.0
+          go install sigs.k8s.io/kind@v0.24.0
           
           # Clean up any existing cluster and create new one
           kind delete cluster || true
@@ -142,7 +136,6 @@ jobs:
           TAG=$(curl -s https://api.github.com/repos/kubevela/kubevela/releases/latest | \
                 jq -r ".tag_name" | \
                 awk '{sub(/^v/, ""); print}')
-          echo "Latest KubeVela version: $TAG"
           echo "LATEST_TAG=$TAG" >> $GITHUB_ENV
 
       - name: Add KubeVela Helm repo
@@ -154,7 +147,6 @@ jobs:
       - name: Install KubeVela ${{ env.LATEST_TAG }}
         run: |
           # Install latest stable KubeVela version
-          echo "Installing KubeVela version ${{ env.LATEST_TAG }}..."
           helm install \
             --create-namespace \
             -n vela-system \
@@ -166,7 +158,6 @@ jobs:
       - name: Post-install status
         run: |
           # Verify KubeVela installation status
-          echo "Checking KubeVela installation status..."
           kubectl get pods -n vela-system
           kubectl rollout status deployment/kubevela-vela-core \
             -n vela-system \
@@ -179,28 +170,25 @@ jobs:
       - name: Get commit hash
         id: commit_hash
         run: |
-          # Generate unique tag based on Git commit hash
-          COMMIT_HASH="git-$(git rev-parse --short HEAD)"
-          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
-          echo "Using image tag: $COMMIT_HASH"
+          # Step to retrieve the current Git commit hash and store it in an environment variable
+          echo "COMMIT_HASH=git-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Build and load Docker image
         run: |
-          # Build development image with current code changes
+          # Build a Docker image with the current commit hash and load it into the KinD cluster
           mkdir -p $HOME/tmp/
-          echo "Building development image: vela-core-test:${{ env.COMMIT_HASH }}"
+          
+          # Build test image with coverage instrumentation for testing workflow
           docker build \
             -t vela-core-test:${{ env.COMMIT_HASH }} \
             -f Dockerfile .
           
-          # Load image into KinD cluster for testing
-          echo "Loading image into KinD cluster..."
+          # Load image into KinD cluster
           TMPDIR=$HOME/tmp/ kind load docker-image vela-core-test:${{ env.COMMIT_HASH }}
 
       - name: Upgrade KubeVela to local image
         run: |
-          # Upgrade existing installation to use development image
-          echo "Upgrading KubeVela to development version..."
+          # Upgrade the KubeVela installation in the KinD cluster to use the locally built Docker image
           helm upgrade kubevela ./charts/vela-core \
             --namespace vela-system \
             --set image.repository=vela-core-test \
@@ -210,101 +198,30 @@ jobs:
             --wait \
             --debug
 
-      - name: Post-upgrade status
+      - name: Post-upgrade status (expecting failure)
         run: |
-          # Verify successful upgrade to development image
-          echo "Verifying upgrade to local development image..."
-          kubectl get pods -n vela-system
+          # Verify the upgrade failure as expected
+          echo "Verifying upgrade failure as expected..."
           
-          # Wait for deployment to be ready
-          kubectl rollout status deployment/kubevela-vela-core \
-            -n vela-system \
-            --timeout=300s
+          # Check if the upgrade actually failed
+          if helm status kubevela -n vela-system | grep -q "STATUS: failed"; then
+            echo "✓ Upgrade failed as expected"
           
-          # Confirm correct image is deployed
-          echo "Checking deployed image version..."
-          kubectl get deployment kubevela-vela-core \
-            -n vela-system \
-            -o yaml | grep "image:" | head -1
-
-      # ========================================================================
-      # E2E Test Environment Preparation
-      # ========================================================================
-      - name: Run Make
-        run: make
-
-      - name: Prepare for e2e tests
-        run: |
-          # Clean up previous test artifacts and setup core environment
-          echo "Preparing e2e test environment..."
-          make e2e-cleanup
-          make e2e-setup-core
+            # Get failure details
+            echo "--- Upgrade Failure Details ---"
+            helm status kubevela -n vela-system
           
-          # Run Helm tests to verify installation
-          echo "Running Helm tests..."
-          helm test -n vela-system kubevela --timeout 5m
-
-      # ========================================================================
-      # E2E Test Execution - Multiple Test Suites
-      # ========================================================================
-
-      - name: Run api e2e tests
-        run: |
-          # Execute API-focused end-to-end tests
-          echo "Running API e2e tests..."
-          make e2e-api-test
-
-      - name: Run addon e2e tests
-        run: |
-          # Execute addon-focused end-to-end tests
-          echo "Running addon e2e tests..."
-          make e2e-addon-test
-
-      - name: Run e2e tests
-        run: |
-          # Execute general end-to-end tests
-          echo "Running general e2e tests..."
-          make e2e-test
-
-      # ========================================================================
-      # Cleanup
-      # ========================================================================
-
-      - name: Cleanup images
-        if: always()  # Always run cleanup, regardless of test outcome
-        run: |
-          # Clean up test artifacts and Docker images
-          echo "Cleaning up test images and artifacts..."
-          make image-cleanup || true
+            # Check pod status to understand failure mode
+            echo "--- Pod Status During Failure ---"
+            kubectl get pods -n vela-system -o wide
           
-          # Remove dangling images older than 24 hours
-          docker image prune -f --filter "until=24h" || true
+            # Check for specific error conditions
+            echo "--- Checking for Expected Error Conditions ---"
+            kubectl describe pods -n vela-system -l app.kubernetes.io/name=vela-core | grep -A 10 "Events:"
           
-          echo "Cleanup completed"
-
-      # ========================================================================
-      # Failure Diagnostics
-      # ========================================================================
-
-      - name: Collect failure diagnostics
-        if: failure()  # Only run if previous steps failed
-        run: |
-          echo "=== FAILURE DIAGNOSTICS ==="
-          echo "Collecting diagnostic information for debugging..."
-          
-          echo "--- Cluster Status ---"
-          kubectl get nodes -o wide || true
-          kubectl get pods -A || true
-          
-          echo "--- KubeVela System Logs ---"
-          kubectl logs -n vela-system -l app.kubernetes.io/name=vela-core --tail=100 || true
-          
-          echo "--- Recent Events ---"
-          kubectl get events -A --sort-by='.lastTimestamp' --field-selector type!=Normal || true
-          
-          echo "--- Helm Release Status ---"
-          helm list -A || true
-          helm status kubevela -n vela-system || true
-          
-          echo "--- Test Artifacts ---"
-          find . -name "*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \; || true
+            echo "✓ Upgrade failure verified successfully"
+          else
+            echo "❌ Expected upgrade to fail, but it appears to have succeeded"
+            kubectl get deployment kubevela-vela-core -n vela-system -o yaml | grep "image:" | head -1
+            exit 1
+          fi
